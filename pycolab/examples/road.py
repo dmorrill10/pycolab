@@ -18,37 +18,166 @@ from pycolab.prefab_parts import drapes as prefab_drapes
 from pycolab.prefab_parts import sprites as prefab_sprites
 from pycolab.protocols import logging as plab_logging
 import numpy as np
+from itertools import combinations
 
 
-ROAD_ART = [
-    # Legend:
-    #     ' ': pavement.                    'd': dirt ditch.
-    #     'b': bump.                        'p': pedestrian.
-    #     'C': the player's car.
-    #
-    # Don't forget to specify the initial board scrolling position with '+'.
-    [
-        '14+d  d ',
-        '25 d  d ',
-        '36 d  d ',
-        '   d  d ',
-        '   d Cd '
-    ]
-]
-GAME_BOARD = [
-    [
-        '|    |',
-        '|    |',
-        '|    |',
-        '|    |',
-        '|    |'
-    ]
-]
+def valid_meta_configurations(
+    num_rows,
+    num_bumps,
+    num_pedestrians,
+    num_speeds
+):
+    assert num_rows > 1
+    num_rows_above_car = num_rows - 1
+    num_columns = 4
+    for speed in range(num_speeds):
+        for car_position in range(num_columns):
+            for num_present_bumps in range(num_bumps + 1):
+                for num_present_pedestrians in range(num_pedestrians + 1):
+                    if (
+                        num_present_bumps + num_present_pedestrians <=
+                        num_rows_above_car * num_columns
+                    ):
+                        yield (
+                            speed,
+                            car_position,
+                            num_present_bumps,
+                            num_present_pedestrians
+                        )
 
-BUMP_INDICES = '123'
+
+def determinstic_state_generator(
+    num_rows,
+    num_bumps,
+    num_pedestrians,
+    num_speeds
+):
+    assert num_rows > 1
+    num_rows_above_car = num_rows - 1
+    num_columns = 4
+    available_columns = {}
+    for i in range(num_rows_above_car):
+        for j in range(num_columns):
+            available_columns[(i, j)] = True
+
+    def legal_positions():
+        return available_columns.keys()
+
+    for (
+        speed,
+        car_position,
+        num_present_bumps,
+        num_present_pedestrians
+    ) in valid_meta_configurations(
+        num_rows,
+        num_bumps,
+        num_pedestrians,
+        num_speeds
+    ):
+        bump_positions = []
+        pedestrian_positions = []
+        for bump_positions in combinations(
+            available_columns.keys(),
+            num_present_bumps
+        ):
+            for pos in bump_positions:
+                del available_columns[pos]
+            for pedestrian_positions in combinations(
+                legal_positions(),
+                num_present_pedestrians
+            ):
+                yield speed, road_state(
+                    num_rows,
+                    bump_positions,
+                    pedestrian_positions,
+                    car_position)
+            for pos in bump_positions:
+                available_columns[pos] = True
+
+
+def game_board(num_rows):
+    assert num_rows > 1
+    return ['|    |'] * num_rows
+
+
+def bump_indices(num_bumps):
+    assert num_bumps >= 0
+    return ''.join([str(i) for i in range(1, num_bumps + 1)])
+
+
+def pedestrian_indices(num_pedestrians, num_bumps):
+    assert num_bumps >= 0
+    assert num_pedestrians >= 0
+    return ''.join(
+        [str(i + num_bumps + 1) for i in range(1, num_pedestrians + 1)])
+
+
+def car_row_array(position=2):
+    row = [' ', 'd', ' ', ' ', 'd', ' ']
+    assert position < len(row) - 1
+    row[position + 1] = 'C'
+    return row
+
+
+def car_row(position=2):
+    return ''.join(car_row_array(position))
+
+
+def road_state(
+    num_rows,
+    bump_positions=[],
+    pedestrian_positions=[],
+    car_position=2
+):
+    assert num_rows > 1
+    board = (
+        [['+', 'd', ' ', ' ', 'd', ' ']] +
+        [[' ', 'd', ' ', ' ', 'd', ' '] for _ in range(num_rows - 2)] +
+        [car_row_array(car_position)]
+    )
+    for i, j in bump_positions:
+        assert j < len(board[i]) - 1
+        board[i][j + 1] = 'b'
+    for i, j in pedestrian_positions:
+        assert j < len(board[i]) - 1
+        board[i][j + 1] = 'p'
+    return '\n'.join([''.join(row) for row in board])
+
+
+def road_art(num_rows, num_bumps, num_pedestrians):
+    '''
+    Legend:
+        ' ': pavement.                    'd': dirt ditch.
+        'b': bump.                        'p': pedestrian.
+        'C': the player's car.
+    '''
+    assert num_rows > 0
+    assert num_bumps >= 0
+    assert num_pedestrians >= 0
+
+    wall_to_wall_width = 6
+    max_width = max(num_bumps, num_pedestrians, wall_to_wall_width)
+    return (
+        [
+            bump_indices(num_bumps) + ' ' * (max_width - num_bumps),
+            (
+                pedestrian_indices(num_pedestrians, num_bumps) +
+                ' ' * (max_width - num_pedestrians)
+            ),
+            '+d  d ' + ' ' * (max_width - wall_to_wall_width)
+        ] +
+        [' d  d ' + ' ' * (max_width - wall_to_wall_width)] * (num_rows - 2) +
+        [car_row() + ' ' * (max_width - wall_to_wall_width)])
+
+
+NUM_ROWS = 5
+NUM_BUMPS = 3
+NUM_PEDESTRIANS = 3
+ROAD_ART = [road_art(NUM_ROWS, NUM_BUMPS, NUM_PEDESTRIANS)]
+GAME_BOARD = [game_board(NUM_ROWS)]
+BUMP_INDICES = bump_indices(NUM_BUMPS)
 BUMP_REPAINT_MAPPING = {c: 'b' for c in BUMP_INDICES}
-
-PEDESTRIAN_INDICES = '456'
+PEDESTRIAN_INDICES = pedestrian_indices(NUM_PEDESTRIANS, NUM_BUMPS)
 PEDESTRIAN_REPAINT_MAPPING = {c: 'p' for c in PEDESTRIAN_INDICES}
 
 
