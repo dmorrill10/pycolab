@@ -30,13 +30,14 @@ def valid_meta_configurations(
     assert num_rows > 1
     num_rows_above_car = num_rows - 1
     num_columns = 4
+    num_spaces = num_rows_above_car * num_columns
     for speed in range(num_speeds):
         for car_position in range(num_columns):
             for num_present_bumps in range(num_bumps + 1):
                 for num_present_pedestrians in range(num_pedestrians + 1):
                     if (
                         num_present_bumps + num_present_pedestrians <=
-                        num_rows_above_car * num_columns
+                        num_spaces
                     ):
                         yield (
                             speed,
@@ -46,7 +47,7 @@ def valid_meta_configurations(
                         )
 
 
-def determinstic_state_generator(
+def determinstic_state_component_generator(
     num_rows,
     num_bumps,
     num_pedestrians,
@@ -77,7 +78,7 @@ def determinstic_state_generator(
         bump_positions = []
         pedestrian_positions = []
         for bump_positions in combinations(
-            available_columns.keys(),
+            legal_positions(),
             num_present_bumps
         ):
             for pos in bump_positions:
@@ -86,13 +87,29 @@ def determinstic_state_generator(
                 legal_positions(),
                 num_present_pedestrians
             ):
-                yield speed, road_state(
+                yield (
+                    speed, 
                     num_rows,
                     bump_positions,
                     pedestrian_positions,
                     car_position)
             for pos in bump_positions:
                 available_columns[pos] = True
+
+
+def determinstic_state_generator(
+    num_rows,
+    num_bumps,
+    num_pedestrians,
+    num_speeds
+):
+    for (
+        speed, num_rows, bump_positions, pedestrian_positions, car_position
+    ) in determinstic_state_component_generator(
+        num_rows, num_bumps, num_pedestrians, num_speeds
+    ):
+        yield speed, road_state(
+            num_rows, bump_positions, pedestrian_positions, car_position)
 
 
 def game_board(num_rows):
