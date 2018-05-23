@@ -18,7 +18,7 @@ from pycolab.prefab_parts import drapes as prefab_drapes
 from pycolab.prefab_parts import sprites as prefab_sprites
 from pycolab.protocols import logging as plab_logging
 import numpy as np
-from itertools import combinations
+from itertools import product, permutations
 
 
 def valid_meta_configurations(
@@ -88,7 +88,7 @@ def determinstic_state_component_generator(
                 num_present_pedestrians
             ):
                 yield (
-                    speed, 
+                    speed,
                     num_rows,
                     bump_positions,
                     pedestrian_positions,
@@ -229,6 +229,169 @@ class DitchDrape(prefab_drapes.Scrolly):
                 )
             ]:
                 the_plot.add_reward(-4)
+
+
+class Car(object):
+    def __init__(self, row, col, speed):
+        self.row = row
+        self.col = col
+        self.speed = speed
+
+    def position(self): return (self.row, self.col)
+
+    def next(self, action, num_speeds):
+        assert num_speeds > 0
+        if action == 'u':
+            return Car(self.row, self.col, min(self.speed + 1, num_speeds))
+        elif action == 'd':
+            return Car(self.row, self.col, max(self.speed - 1, 1))
+        elif action == 'l':
+            return Car(self.row, max(self.col - 1, 0), self.speed)
+        elif action == 'r':
+            return Car(self.row, min(self.col + 1, 0), self.speed)
+        else:
+            raise 'Unrecognized action, "{}".'.format(action)
+
+
+class Obstacle(object):
+    def __init__(self, row, col):
+        self.row = row
+        self.col = col
+
+    def position(self): return (self.row, self.col)
+
+    def prob_of_appearing(self):
+        raise 'Abstract. Must be <= 1/num_speeds.'
+
+    def reward_for_collision(self):
+        raise 'Abstract'
+
+    def reward(self, car):
+        if self.has_collided(car):
+            return self.reward_for_collision()
+        else:
+            return 0
+
+    def has_collided(self, car):
+        was_in_front_of_car = self.row < car.row - car.speed
+        is_under_or_behind_car = self.row >= car.row
+        is_in_car_lane = self.col == car.col
+        return (
+            was_in_front_of_car and is_under_or_behind_car and is_in_car_lane)
+
+    def next(self, car):
+        next_row = self.row + car.speed
+        return self.__class__(next_row, self.col)
+
+
+class Bump(Obstacle):
+    def prob_of_appearing(self): return 0.1
+
+    def reward_for_collision(self, car):
+        return -2 * car.speed
+
+
+class Pedestrian(Obstacle):
+    def prob_of_appearing(self): return 0.05
+
+    def reward_for_collision(self, car):
+        return -1e2 ** car.speed
+
+
+def combinations(iterable, r, collection=tuple):
+    # combinations('ABCD', 2) --> AB AC AD BC BD CD
+    # combinations(range(4), 3) --> 012 013 023 123
+    iterable = tuple(iterable)
+    n = len(iterable)
+    if r > n:
+        return
+    indices = list(range(r))
+    yield collection(iterable[i] for i in indices)
+    while True:
+        for i in range(r - 1, -1, -1):
+            if indices[i] != i + n - r:
+                break
+        else:
+            return
+        indices[i] += 1
+        for j in range(i + 1, r):
+            indices[j] = indices[j - 1] + 1
+        yield collection(iterable[i] for i in indices)
+
+
+class Road(object):
+    def __init__(self, num_rows, car, obstacles, num_speeds):
+        self._num_rows = num_rows
+        self._num_columns = 4
+        self._car = car
+        self._num_speeds = num_speeds
+        self._obstacles = obstacles
+
+        self._available_spaces = {}
+        for pos in product(range(0, self._car.speed), range(4)):
+            if self._car.position() != pos:
+                self._available_spaces[pos] = True
+        for obs in self._obstacles:
+            if self.obstacle_visible(obs):
+                disallowed_position = obs.position()
+                if disallowed_position in self._available_spaces:
+                    del self._available_spaces[disallowed_position]
+
+    def obstacle_visible(self, obstacle):
+        return 0 <= obstacle.row < self._num_rows
+
+    def successors(self, action):
+        '''Successors and their likelihoods (in pairs).'''
+        next_car = self._car.next(action, self._num_speeds)
+
+        hidden_obstacle_indices = [
+            i
+            for i in range(len(self._obstacles))
+            if not self.obstacle_visible(self._obstacles[i])
+        ]
+        max_num_revealed_obstacles = min(
+            len(hidden_obstacle_indices), len(self._available_spaces))
+
+        for num_newly_visible_obstacles in range(
+            max_num_revealed_obstacles + 1
+        ):
+            position_sets = list(permutations(
+                self._available_spaces.keys(), num_newly_visible_obstacles
+            ))
+            sets_of_obstacle_indices_to_reveal = list(combinations(
+                hidden_obstacle_indices,
+                num_newly_visible_obstacles,
+                collection=set
+            ))
+
+            for positions, reveal_indices in product(
+                position_sets, sets_of_obstacle_indices_to_reveal
+            ):
+                assert len(positions) == len(reveal_indices)
+
+                prob = 1.0
+                j = 0
+                next_obstacles = []
+                for i in range(len(self._obstacles)):
+                    obs = self._obstacles[i]
+                    p = obs.prob_of_appearing()
+                    assert p <= 1
+                    if i in reveal_indices:
+                        next_obstacles.append(obs.__class__(*positions[j]))
+                        prob *= p / float(len(self._available_spaces) - j)
+                        j += 1
+                    else:
+                        next_obstacles.append(obs.next(self._car))
+                        if j < len(self._available_spaces):
+                            prob *= 1.0 - p
+                yield (
+                    self.__class__(
+                        self._num_rows,
+                        next_car,
+                        next_obstacles,
+                        self._num_speeds
+                    ),
+                    prob)
 
 
 class ObstacleSprite(prefab_sprites.MazeWalker):
