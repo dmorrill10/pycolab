@@ -165,14 +165,12 @@ def road_state(
             [car_row_array(car_position, show_walls=show_walls)]
         )
     for i, j in bump_positions:
-        assert j < len(board[i]) - 1
         col = j + int(show_walls)
-        if col >= 0:
+        if i < len(board) and 0 <= col <= len(board[i]) - int(show_walls):
             board[i][col] = 'b'
     for i, j in pedestrian_positions:
-        assert j < len(board[i]) - 1
         col = j + int(show_walls)
-        if col >= 0:
+        if i < len(board) and 0 <= col <= len(board[i]) - int(show_walls):
             board[i][col] = 'p'
     return '\n'.join([''.join(row) for row in board])
 
