@@ -407,6 +407,9 @@ class Road(object):
                     ),
                     prob)
 
+    def to_key(self, show_walls=False):
+        return (self.to_s(show_walls=show_walls), self._car.speed)
+
     def to_s(self, show_walls=True):
         bumps = [
             obstacle.position() for obstacle in self._obstacles
