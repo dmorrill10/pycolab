@@ -129,10 +129,13 @@ def pedestrian_indices(num_pedestrians, num_bumps):
         [str(i + num_bumps + 1) for i in range(1, num_pedestrians + 1)])
 
 
-def car_row_array(position=2):
-    row = [' ', 'd', ' ', ' ', 'd', ' ']
+def car_row_array(position=2, show_walls=True):
+    if show_walls:
+        row = [' ', 'd', ' ', ' ', 'd', ' ']
+    else:
+        row = ['d', ' ', ' ', 'd']
     assert position < len(row) - 1
-    row[position + 1] = 'C'
+    row[position + int(show_walls)] = 'C'
     return row
 
 
@@ -144,20 +147,33 @@ def road_state(
     num_rows,
     bump_positions=[],
     pedestrian_positions=[],
-    car_position=2
+    car_position=2,
+    show_walls=True
 ):
     assert num_rows > 1
-    board = (
-        [['+', 'd', ' ', ' ', 'd', ' ']] +
-        [[' ', 'd', ' ', ' ', 'd', ' '] for _ in range(num_rows - 2)] +
-        [car_row_array(car_position)]
-    )
+
+    if show_walls:
+        board = (
+            [['+', 'd', ' ', ' ', 'd', ' ']] +
+            [[' ', 'd', ' ', ' ', 'd', ' '] for _ in range(num_rows - 2)] +
+            [car_row_array(car_position, show_walls=show_walls)]
+        )
+    else:
+        board = (
+            [['d', ' ', ' ', 'd']] +
+            [['d', ' ', ' ', 'd'] for _ in range(num_rows - 2)] +
+            [car_row_array(car_position, show_walls=show_walls)]
+        )
     for i, j in bump_positions:
         assert j < len(board[i]) - 1
-        board[i][j + 1] = 'b'
+        col = j + int(show_walls)
+        if col >= 0:
+            board[i][col] = 'b'
     for i, j in pedestrian_positions:
         assert j < len(board[i]) - 1
-        board[i][j + 1] = 'p'
+        col = j + int(show_walls)
+        if col >= 0:
+            board[i][col] = 'p'
     return '\n'.join([''.join(row) for row in board])
 
 
