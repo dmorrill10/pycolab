@@ -409,6 +409,18 @@ class Road(object):
                     ),
                     prob)
 
+    def to_s(self, show_walls=True):
+        bumps = [
+            obstacle.position() for obstacle in self._obstacles
+            if isinstance(obstacle, Bump)
+        ]
+        pedestrians = [
+            obstacle.position() for obstacle in self._obstacles
+            if isinstance(obstacle, Pedestrian)
+        ]
+        return road_state(
+            self._num_rows, bumps, pedestrians, show_walls=show_walls)
+
 
 class ObstacleSprite(prefab_sprites.MazeWalker):
     def __init__(self, corner, position, character, virtual_position):
