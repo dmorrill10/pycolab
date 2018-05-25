@@ -343,8 +343,7 @@ class Road(object):
 
         self._available_spaces = {}
         for pos in product(range(0, self._car.speed), range(4)):
-            if self._car.position() != pos:
-                self._available_spaces[pos] = True
+            self._available_spaces[pos] = True
         for obs in self._obstacles:
             if self.obstacle_visible(obs):
                 disallowed_position = obs.position()
@@ -355,7 +354,7 @@ class Road(object):
         return 0 <= obstacle.row < self._num_rows
 
     def successors(self, action):
-        '''Successors and their likelihoods (in pairs).'''
+        '''Generates successor, probability, reward tuples.'''
         next_car = self._car.next(action, self._num_speeds)
 
         hidden_obstacle_indices = [
@@ -386,6 +385,7 @@ class Road(object):
                 prob = 1.0
                 j = 0
                 next_obstacles = []
+                reward = 0.0
                 for i in range(len(self._obstacles)):
                     obs = self._obstacles[i]
                     p = obs.prob_of_appearing()
@@ -398,6 +398,7 @@ class Road(object):
                         next_obstacles.append(obs.next(self._car))
                         if j < len(self._available_spaces):
                             prob *= 1.0 - p
+                    reward += next_obstacles[-1].reward(self._car)
                 yield (
                     self.__class__(
                         self._num_rows,
@@ -405,7 +406,9 @@ class Road(object):
                         next_obstacles,
                         self._num_speeds
                     ),
-                    prob)
+                    prob,
+                    reward
+                )
 
     def to_key(self, show_walls=False):
         return (self.to_s(show_walls=show_walls), self._car.speed)
