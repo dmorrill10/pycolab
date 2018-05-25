@@ -440,7 +440,7 @@ class ObstacleSprite(prefab_sprites.MazeWalker):
     def update(self, actions, board, layers, backdrop, things, the_plot):
         if self.on_the_board:
             # Check if the player's car ran over yourself.
-            # If so, remove yourself from the board and give the player a
+            # If so, give the player a
             # negative reward proportional to their speed.
             new_row = self.virtual_position.row + things['C'].speed
             if (
@@ -448,9 +448,7 @@ class ObstacleSprite(prefab_sprites.MazeWalker):
                 self.virtual_position.col == things['C'].virtual_position.col
             ):
                 the_plot.add_reward(self.reward_for_collision(things['C']))
-                self._teleport((0, -1))
-            else:
-                self._teleport((new_row, self.virtual_position.col))
+            self._teleport((new_row, self.virtual_position.col))
         else:
             # Check how many legal spaces there are to teleport to.
             # This just depends on how fast the player is going and the other
@@ -467,24 +465,21 @@ class ObstacleSprite(prefab_sprites.MazeWalker):
                 )
                 if disallowed_position in possibly_allowed_positions:
                     del possibly_allowed_positions[disallowed_position]
-            for pos in possibly_allowed_positions.keys():
-                if np.random.uniform() < self.prob_of_appearing():
-                    self._teleport(pos)
-                    break
+
+            allowed_positions = possibly_allowed_positions
+            reveal = (
+                len(allowed_positions) > 0 and
+                np.random.uniform() < self.prob_of_appearing())
+            if reveal:
+                allowed_positions = tuple(allowed_positions.keys())
+                i = np.random.randint(0, len(allowed_positions))
+                self._teleport(allowed_positions[i])
 
 
-class BumpSprite(ObstacleSprite):
-    def prob_of_appearing(self): return 0.1
-
-    def reward_for_collision(self, car):
-        return -2 * car.speed
+class BumpSprite(ObstacleSprite, Bump): pass
 
 
-class PedestrianSprite(ObstacleSprite):
-    def prob_of_appearing(self): return 0.05
-
-    def reward_for_collision(self, car):
-        return -1e2 ** car.speed
+class PedestrianSprite(ObstacleSprite, Pedestrian): pass
 
 
 def make_game(level):
