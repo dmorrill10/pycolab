@@ -428,7 +428,11 @@ class Road(object):
             if isinstance(obstacle, Pedestrian)
         ]
         return road_state(
-            self._num_rows, bumps, pedestrians, show_walls=show_walls)
+            self._num_rows,
+            bumps,
+            pedestrians,
+            car_position=self._car.col,
+            show_walls=show_walls)
 
 
 class ObstacleSprite(prefab_sprites.MazeWalker):
