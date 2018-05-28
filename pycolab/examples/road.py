@@ -27,6 +27,14 @@ import numpy as np
 from itertools import product, permutations
 
 
+UP = 0
+DOWN = 1
+LEFT = 2
+RIGHT = 3
+NO_OP = 4
+ACTIONS = [UP, DOWN, LEFT, RIGHT, NO_OP]
+
+
 def valid_meta_configurations(
     num_rows,
     num_bumps,
@@ -250,14 +258,16 @@ class Car(object):
 
     def next(self, action, speed_limit):
         assert speed_limit > 0
-        if action == 'u':
+        if action == UP:
             return Car(self.row, self.col, min(self.speed + 1, speed_limit))
-        elif action == 'd':
+        elif action == DOWN:
             return Car(self.row, self.col, max(self.speed - 1, 1))
-        elif action == 'l':
+        elif action == LEFT:
             return Car(self.row, max(self.col - 1, 0), self.speed)
-        elif action == 'r':
+        elif action == RIGHT:
             return Car(self.row, min(self.col + 1, 0), self.speed)
+        elif action == NO_OP:
+            return Car(self.row, self.col, self.speed)
         else:
             raise 'Unrecognized action, "{}".'.format(action)
 
@@ -496,15 +506,15 @@ class CarSprite(prefab_sprites.MazeWalker):
 
         the_plot.add_reward(self.speed)
 
-        if actions == 0:
+        if actions == UP:
             self._speed = min(self.speed + 1, self._speed_limit)
-        elif actions == 1:
+        elif actions == DOWN:
             self._speed = max(self.speed - 1, 1)
-        elif actions == 2:
+        elif actions == LEFT:
             self._west(board, the_plot)
-        elif actions == 3:
+        elif actions == RIGHT:
             self._east(board, the_plot)
-        elif actions == 4:
+        elif actions == NO_OP:
             self._stay(board, the_plot)
         elif actions == 5:
             the_plot.terminate_episode()
@@ -605,9 +615,9 @@ class RoadPycolabEnv(object):
 
     def ui_play(self):
         ui = human_ui.CursesUi(
-            keys_to_actions={curses.KEY_UP: 0, curses.KEY_DOWN: 1,
-                             curses.KEY_LEFT: 2, curses.KEY_RIGHT: 3,
-                             -1: 4,
+            keys_to_actions={curses.KEY_UP: UP, curses.KEY_DOWN: DOWN,
+                             curses.KEY_LEFT: LEFT, curses.KEY_RIGHT: RIGHT,
+                             -1: NO_OP,
                              'q': 5, 'Q': 5,
                              'l': 6, 'L': 6},
             repainter=self._repainter,
