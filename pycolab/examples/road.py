@@ -10,6 +10,7 @@ from __future__ import print_function
 
 import curses
 import sys
+import fire
 
 from pycolab import ascii_art
 from pycolab import human_ui
@@ -119,14 +120,14 @@ def game_board(num_rows):
 
 def bump_indices(num_bumps):
     assert num_bumps >= 0
-    return ''.join([str(i) for i in range(1, num_bumps + 1)])
+    return ''.join([str(i) for i in range(num_bumps)])
 
 
 def pedestrian_indices(num_pedestrians, num_bumps):
     assert num_bumps >= 0
     assert num_pedestrians >= 0
     return ''.join(
-        [str(i + num_bumps + 1) for i in range(1, num_pedestrians + 1)])
+        [str(i + num_bumps) for i in range(num_pedestrians)])
 
 
 def car_row_array(position=2, show_walls=True):
@@ -199,17 +200,6 @@ def road_art(num_rows, num_bumps, num_pedestrians):
         ] +
         [' d  d ' + ' ' * (max_width - wall_to_wall_width)] * (num_rows - 2) +
         [car_row() + ' ' * (max_width - wall_to_wall_width)])
-
-
-NUM_ROWS = 5
-NUM_BUMPS = 3
-NUM_PEDESTRIANS = 3
-ROAD_ART = [road_art(NUM_ROWS, NUM_BUMPS, NUM_PEDESTRIANS)]
-GAME_BOARD = [game_board(NUM_ROWS)]
-BUMP_INDICES = bump_indices(NUM_BUMPS)
-BUMP_REPAINT_MAPPING = {c: 'b' for c in BUMP_INDICES}
-PEDESTRIAN_INDICES = pedestrian_indices(NUM_PEDESTRIANS, NUM_BUMPS)
-PEDESTRIAN_REPAINT_MAPPING = {c: 'p' for c in PEDESTRIAN_INDICES}
 
 
 def color256_to_1000(c):
@@ -482,55 +472,6 @@ class BumpSprite(ObstacleSprite, Bump): pass
 class PedestrianSprite(ObstacleSprite, Pedestrian): pass
 
 
-def make_game(speed=1, speed_limit=3):
-    level = 0
-    scrolly_info = prefab_drapes.Scrolly.PatternInfo(
-        ROAD_ART[level],
-        GAME_BOARD[level],
-        board_northwest_corner_mark='+',
-        what_lies_beneath='|'
-    )
-
-    sprites = {
-        c: ascii_art.Partial(BumpSprite, scrolly_info.virtual_position(c))
-        for c in BUMP_INDICES if c in ''.join(ROAD_ART[level])
-    }
-    sprites['C'] = ascii_art.Partial(
-        car_sprite_class(speed=speed, speed_limit=speed_limit),
-        scrolly_info.virtual_position('C')
-    )
-    for c in PEDESTRIAN_INDICES:
-        if c in ''.join(ROAD_ART[level]):
-            sprites[c] = ascii_art.Partial(
-                PedestrianSprite,
-                scrolly_info.virtual_position(c)
-            )
-    return ascii_art.ascii_art_to_game(
-        GAME_BOARD[level],
-        what_lies_beneath=' ',
-        sprites=sprites,
-        drapes={
-            'd': ascii_art.Partial(
-                DitchDrape,
-                **scrolly_info.kwargs('d')
-            )
-        },
-        # The base Backdrop class will do for a backdrop that just sits there.
-        # In accordance with best practices, the one egocentric MazeWalker (the
-        # player) is in a separate and later update group from all of the
-        # pycolab entities that control non-traversable characters.
-        update_schedule=[
-            (
-                ['d'] +
-                list(BUMP_REPAINT_MAPPING.keys()) +
-                list(PEDESTRIAN_REPAINT_MAPPING.keys())
-            ),
-            ['C']
-        ],
-        z_order='d' + BUMP_INDICES + PEDESTRIAN_INDICES + 'C'
-    )
-
-
 class CarSprite(prefab_sprites.MazeWalker):
     """A `Sprite` for our player, the car."""
 
@@ -579,39 +520,75 @@ def car_sprite_class(speed=1, speed_limit=3):
     return MyCarSprite
 
 
-def main(argv=()):
-    np.random.seed(42)
-    game = make_game(int(argv[1]) if len(argv) > 1 else 0)
-
-    repaint_mapping = {}
-    for k, v in BUMP_REPAINT_MAPPING.items():
-        repaint_mapping[k] = v
-    for k, v in PEDESTRIAN_REPAINT_MAPPING.items():
-        repaint_mapping[k] = v
-    repainter = rendering.ObservationCharacterRepainter(repaint_mapping)
-
-    # Make a CursesUi to play it with.
-    ui = human_ui.CursesUi(
-        keys_to_actions={curses.KEY_UP: 0, curses.KEY_DOWN: 1,
-                         curses.KEY_LEFT: 2, curses.KEY_RIGHT: 3,
-                         -1: 4,
-                         'q': 5, 'Q': 5,
-                         'l': 6, 'L': 6},
-        repainter=repainter,
-        delay=1000, colour_fg=COLOUR_FG, colour_bg=COLOUR_BG)
-    ui.play(game)
-
-
 class RoadPycolabEnv(object):
-    def __init__(self, speed=1, speed_limit=3):
+    def __init__(
+        self,
+        num_rows=5,
+        num_bumps=3,
+        num_pedestrians=3,
+        speed=1,
+        speed_limit=3
+    ):
         self._speed = speed
         self._speed_limit = speed_limit
-        self._game = make_game(speed=speed, speed_limit=speed_limit)
+
+        self._num_rows = num_rows
+        self._num_bumps = num_bumps
+        self._num_pedestrians = num_pedestrians
+
+        ra = road_art(num_rows, num_bumps, num_pedestrians)
+        gb = game_board(num_rows)
+        bi = bump_indices(num_bumps)
+        bump_repaint_mapping = {c: 'b' for c in bi}
+        pi = pedestrian_indices(num_pedestrians, num_bumps)
+        pedestrian_repaint_mapping = {c: 'p' for c in pi}
+
+        scrolly_info = prefab_drapes.Scrolly.PatternInfo(
+            ra,
+            gb,
+            board_northwest_corner_mark='+',
+            what_lies_beneath='|'
+        )
+
+        sprites = {
+            c: ascii_art.Partial(BumpSprite, scrolly_info.virtual_position(c))
+            for c in bi if c in ''.join(ra)
+        }
+        sprites['C'] = ascii_art.Partial(
+            car_sprite_class(speed=speed, speed_limit=speed_limit),
+            scrolly_info.virtual_position('C')
+        )
+        for c in pi:
+            if c in ''.join(ra):
+                sprites[c] = ascii_art.Partial(
+                    PedestrianSprite,
+                    scrolly_info.virtual_position(c)
+                )
+        self._game = ascii_art.ascii_art_to_game(
+            gb,
+            what_lies_beneath=' ',
+            sprites=sprites,
+            drapes={
+                'd': ascii_art.Partial(
+                    DitchDrape,
+                    **scrolly_info.kwargs('d')
+                )
+            },
+            update_schedule=[
+                (
+                    ['d'] +
+                    list(bump_repaint_mapping.keys()) +
+                    list(pedestrian_repaint_mapping.keys())
+                ),
+                ['C']
+            ],
+            z_order='d' + bi + pi + 'C'
+        )
 
         repaint_mapping = {}
-        for k, v in BUMP_REPAINT_MAPPING.items():
+        for k, v in bump_repaint_mapping.items():
             repaint_mapping[k] = v
-        for k, v in PEDESTRIAN_REPAINT_MAPPING.items():
+        for k, v in pedestrian_repaint_mapping.items():
             repaint_mapping[k] = v
         self._repainter = rendering.ObservationCharacterRepainter(
             repaint_mapping)
@@ -620,6 +597,17 @@ class RoadPycolabEnv(object):
         observation, reward, discount = self._game.its_showtime()
         observation = self._repainter(observation)
         return (observation, self._speed), reward, discount
+
+    def ui_play(self):
+        ui = human_ui.CursesUi(
+            keys_to_actions={curses.KEY_UP: 0, curses.KEY_DOWN: 1,
+                             curses.KEY_LEFT: 2, curses.KEY_RIGHT: 3,
+                             -1: 4,
+                             'q': 5, 'Q': 5,
+                             'l': 6, 'L': 6},
+            repainter=self._repainter,
+            delay=1000, colour_fg=COLOUR_FG, colour_bg=COLOUR_BG)
+        return ui.play(self._game)
 
     def play(self, a):
         if a == 0:
@@ -643,39 +631,59 @@ class RoadPycolabEnv(object):
         return ('\n'.join(ascii_board_rows), speed)
 
 
-def run_random_policy(argv=()):
+def main(
+    num_rows=5,
+    num_bumps=3,
+    num_pedestrians=3,
+    speed=1,
+    speed_limit=3,
+    num_steps=100,
+    ui=False
+):
     np.random.seed(42)
 
-    speed = int(argv[1]) if len(argv) > 1 else 1
-    speed_limit = int(argv[2]) if len(argv) > 2 else 3
-    game = RoadPycolabEnv(speed, speed_limit)
+    num_rows = int(num_rows)
+    num_bumps = int(num_bumps)
+    num_pedestrians = int(num_pedestrians)
+    speed = int(speed)
+    speed_limit = int(speed_limit)
+    num_steps = int(num_steps)
 
-    observation, _, __ = game.its_showtime()
-    print(game.observation_to_key(observation))
+    game = RoadPycolabEnv(
+        num_rows,
+        num_bumps,
+        num_pedestrians,
+        speed,
+        speed_limit)
 
-    num_steps = int(argv[3]) if len(argv) > 3 else 100
-    rl_return = 0.0
-    discount_product = 1.0
-    for _ in range(num_steps):
-        a = np.random.randint(0, 4)
-        observation, reward, discount = game.play(a)
-        discount_product *= discount
-        rl_return += reward * discount_product
+    if ui:
+        game.ui_play()
+    else:
+        observation, _, __ = game.its_showtime()
 
+        rl_return = 0.0
+        discount_product = 1.0
+        for _ in range(num_steps):
+            a = np.random.randint(0, 4)
+            observation, reward, discount = game.play(a)
+            discount_product *= discount
+            rl_return += reward * discount_product
+
+            # print(
+            #     (
+            #         a,
+            #         reward, discount,
+            #         rl_return
+            #     )
+            # )
+            # board, speed = game.observation_to_key(observation)
+            # print(board)
+            # print(speed)
+            # print('')
         print(
-            (
-                a,
-                reward, discount,
-                rl_return
-            )
-        )
-        board, speed = game.observation_to_key(observation)
-        print(board)
-        print(speed)
-        print('')
-    print('Final return after {} steps: {}'.format(num_steps, rl_return))
+            'Final return for uniform random policy after {} steps: {}'.format(
+            num_steps, rl_return))
 
 
 if __name__ == '__main__':
-    main(sys.argv)
-    # run_random_policy(sys.argv)
+    fire.Fire(main)
