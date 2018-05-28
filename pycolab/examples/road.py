@@ -8,9 +8,14 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import curses
-import sys
-import fire
+try:
+    import curses
+except:
+    print('Warning: Not importing `curses`.')
+try:
+    import fire
+except:
+    print('Warning: Not importing `fire`.')
 
 from pycolab import ascii_art
 from pycolab import human_ui
