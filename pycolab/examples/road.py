@@ -482,7 +482,8 @@ class BumpSprite(ObstacleSprite, Bump): pass
 class PedestrianSprite(ObstacleSprite, Pedestrian): pass
 
 
-def make_game(level):
+def make_game(speed=1, speed_limit=3):
+    level = 0
     scrolly_info = prefab_drapes.Scrolly.PatternInfo(
         ROAD_ART[level],
         GAME_BOARD[level],
@@ -495,7 +496,7 @@ def make_game(level):
         for c in BUMP_INDICES if c in ''.join(ROAD_ART[level])
     }
     sprites['C'] = ascii_art.Partial(
-        CarSprite,
+        car_sprite_class(speed=speed, speed_limit=speed_limit),
         scrolly_info.virtual_position('C')
     )
     for c in PEDESTRIAN_INDICES:
@@ -543,20 +544,16 @@ class CarSprite(prefab_sprites.MazeWalker):
             impassable='|'
         )
         self._teleport(virtual_position)
-        self._speed = 1
-
-    @property
-    def speed(self): return self._speed
 
     def update(self, actions, board, layers, backdrop, things, the_plot):
         del backdrop, things, layers  # Unused
 
-        the_plot.add_reward(self._speed)
+        the_plot.add_reward(self.speed)
 
         if actions == 0:
-            self._speed = min(self._speed + 1, 3)
+            self._speed = min(self.speed + 1, self._speed_limit)
         elif actions == 1:
-            self._speed = max(self._speed - 1, 1)
+            self._speed = max(self.speed - 1, 1)
         elif actions == 2:
             self._west(board, the_plot)
         elif actions == 3:
@@ -567,6 +564,19 @@ class CarSprite(prefab_sprites.MazeWalker):
             the_plot.terminate_episode()
         elif actions == 6:
             print(plab_logging.consume(the_plot))
+
+
+def car_sprite_class(speed=1, speed_limit=3):
+    class MyCarSprite(CarSprite):
+        def __init__(self, *args, **kwargs):
+            super(MyCarSprite, self).__init__(*args, **kwargs)
+            self._speed = speed
+            self._speed_limit = speed_limit
+
+        @property
+        def speed(self): return self._speed
+
+    return MyCarSprite
 
 
 def main(argv=()):
@@ -592,5 +602,80 @@ def main(argv=()):
     ui.play(game)
 
 
+class RoadPycolabEnv(object):
+    def __init__(self, speed=1, speed_limit=3):
+        self._speed = speed
+        self._speed_limit = speed_limit
+        self._game = make_game(speed=speed, speed_limit=speed_limit)
+
+        repaint_mapping = {}
+        for k, v in BUMP_REPAINT_MAPPING.items():
+            repaint_mapping[k] = v
+        for k, v in PEDESTRIAN_REPAINT_MAPPING.items():
+            repaint_mapping[k] = v
+        self._repainter = rendering.ObservationCharacterRepainter(
+            repaint_mapping)
+
+    def its_showtime(self):
+        observation, reward, discount = self._game.its_showtime()
+        observation = self._repainter(observation)
+        return (observation, self._speed), reward, discount
+
+    def play(self, a):
+        if a == 0:
+            self._speed = min(self._speed + 1, self._speed_limit)
+        elif a == 1:
+            self._speed = max(self._speed - 1, 1)
+        observation, reward, discount = self._game.play(a)
+        observation = self._repainter(observation)
+        return (observation, self._speed), reward, discount
+
+    def with_walls_removed(self, board):
+        return board[:, 1:-1]
+
+    def observation_to_key(self, o):
+        pycolab_observation, speed = o
+        board_array = self.with_walls_removed(pycolab_observation.board)
+        ascii_board_rows = [
+            board_array[i].tostring().decode('ascii')
+            for i in range(len(board_array))
+        ]
+        return ('\n'.join(ascii_board_rows), speed)
+
+
+def run_random_policy(argv=()):
+    np.random.seed(42)
+
+    speed = int(argv[1]) if len(argv) > 1 else 1
+    speed_limit = int(argv[2]) if len(argv) > 2 else 3
+    game = RoadPycolabEnv(speed, speed_limit)
+
+    observation, _, __ = game.its_showtime()
+    print(game.observation_to_key(observation))
+
+    num_steps = int(argv[3]) if len(argv) > 3 else 100
+    rl_return = 0.0
+    discount_product = 1.0
+    for _ in range(num_steps):
+        a = np.random.randint(0, 4)
+        observation, reward, discount = game.play(a)
+        discount_product *= discount
+        rl_return += reward * discount_product
+
+        print(
+            (
+                a,
+                reward, discount,
+                rl_return
+            )
+        )
+        board, speed = game.observation_to_key(observation)
+        print(board)
+        print(speed)
+        print('')
+    print('Final return after {} steps: {}'.format(num_steps, rl_return))
+
+
 if __name__ == '__main__':
     main(sys.argv)
+    # run_random_policy(sys.argv)
