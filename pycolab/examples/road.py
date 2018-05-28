@@ -31,13 +31,13 @@ def valid_meta_configurations(
     num_rows,
     num_bumps,
     num_pedestrians,
-    num_speeds
+    speed_limit
 ):
     assert num_rows > 1
     num_rows_above_car = num_rows - 1
     num_columns = 4
     num_spaces = num_rows_above_car * num_columns
-    for speed in range(num_speeds):
+    for speed in range(speed_limit):
         for car_position in range(num_columns):
             for num_present_bumps in range(num_bumps + 1):
                 for num_present_pedestrians in range(num_pedestrians + 1):
@@ -57,7 +57,7 @@ def determinstic_state_component_generator(
     num_rows,
     num_bumps,
     num_pedestrians,
-    num_speeds
+    speed_limit
 ):
     assert num_rows > 1
     num_rows_above_car = num_rows - 1
@@ -79,7 +79,7 @@ def determinstic_state_component_generator(
         num_rows,
         num_bumps,
         num_pedestrians,
-        num_speeds
+        speed_limit
     ):
         bump_positions = []
         pedestrian_positions = []
@@ -107,12 +107,12 @@ def determinstic_state_generator(
     num_rows,
     num_bumps,
     num_pedestrians,
-    num_speeds
+    speed_limit
 ):
     for (
         speed, num_rows, bump_positions, pedestrian_positions, car_position
     ) in determinstic_state_component_generator(
-        num_rows, num_bumps, num_pedestrians, num_speeds
+        num_rows, num_bumps, num_pedestrians, speed_limit
     ):
         yield speed, road_state(
             num_rows, bump_positions, pedestrian_positions, car_position)
@@ -248,10 +248,10 @@ class Car(object):
 
     def position(self): return (self.row, self.col)
 
-    def next(self, action, num_speeds):
-        assert num_speeds > 0
+    def next(self, action, speed_limit):
+        assert speed_limit > 0
         if action == 'u':
-            return Car(self.row, self.col, min(self.speed + 1, num_speeds))
+            return Car(self.row, self.col, min(self.speed + 1, speed_limit))
         elif action == 'd':
             return Car(self.row, self.col, max(self.speed - 1, 1))
         elif action == 'l':
@@ -270,7 +270,7 @@ class Obstacle(object):
     def position(self): return (self.row, self.col)
 
     def prob_of_appearing(self):
-        raise 'Abstract. Must be <= 1/num_speeds.'
+        raise 'Abstract. Must be <= 1/speed_limit.'
 
     def reward_for_collision(self):
         raise 'Abstract'
@@ -329,11 +329,11 @@ def combinations(iterable, r, collection=tuple):
 
 
 class Road(object):
-    def __init__(self, num_rows, car, obstacles, num_speeds):
+    def __init__(self, num_rows, car, obstacles, speed_limit):
         self._num_rows = num_rows
         self._num_columns = 4
         self._car = car
-        self._num_speeds = num_speeds
+        self._speed_limit = speed_limit
         self._obstacles = obstacles
 
         self._available_spaces = {}
@@ -350,7 +350,7 @@ class Road(object):
 
     def successors(self, action):
         '''Generates successor, probability, reward tuples.'''
-        next_car = self._car.next(action, self._num_speeds)
+        next_car = self._car.next(action, self._speed_limit)
 
         hidden_obstacle_indices = [
             i
@@ -399,7 +399,7 @@ class Road(object):
                         self._num_rows,
                         next_car,
                         next_obstacles,
-                        self._num_speeds
+                        self._speed_limit
                     ),
                     prob,
                     reward
@@ -634,6 +634,18 @@ class RoadPycolabEnv(object):
             for i in range(len(board_array))
         ]
         return ('\n'.join(ascii_board_rows), speed)
+
+    def to_road(self):
+        car = Car(self._num_rows - 1, 2, self._speed)
+        initial_bumps = [Bump(-1, -1) for _ in range(self._num_bumps)]
+        initial_pedestrians = [
+            Pedestrian(-1, -1) for _ in range(self._num_pedestrians)
+        ]
+        return Road(
+            self._num_rows,
+            car,
+            initial_bumps + initial_pedestrians,
+            self._speed_limit)
 
 
 def main(
